@@ -1,5 +1,5 @@
 RedisBeater
-=======
+===========
 
 .. image:: https://img.shields.io/pypi/v/celery-redisbeater.svg
    :target: https://pypi.python.org/pypi/celery-redisbeater
@@ -23,7 +23,7 @@ that stores the scheduled tasks and runtime metadata in `Redis <http://redis.io/
 fork of `RedBeat <https://github.com/sibson/redbeat>`_
 
 Why RedisBeater?
--------------
+----------------
 
 #. Dynamic live task creation and modification, without lengthy downtime
 #. Externally manage tasks from any language with Redis bindings
@@ -64,9 +64,51 @@ To disable this feature, set:
 
 More details available on `Read the Docs <https://redbeat.readthedocs.io/en/latest/>`_
 
+You can initialize and use RedisBeater just as use
+`forked project <https://github.com/sibson/redbeat>`_. You just need to replace
+RedBeat with RedisBeater. For instance:
+
+.. code-block:: python
+
+    RedisBeaterSchedulerEntry(
+        'task-name',
+        'tasks.some_task',
+        interval,
+        args=['arg1', 2],
+    ).save()
+
+
+Custom Schedule
+---------------
+
+If you want to use your custom schedule class, you must define `encode_beater`
+method and return fields that your class needs when initialized by
+`RedisBeaterScheduler` later. For instance:
+
+.. code-block:: python
+
+    class customecrontab(BaseSchedule):
+        def __init__(self, minute='*', hour='*', day_of_week='*',
+                 day_of_month='*', month_of_year='*', **kwargs):
+        self.hour = hour
+        self.minute = minute
+        self.day_of_week = day_of_week
+        self.day_of_month = day_of_month
+        self.month_of_year = month_of_year
+        super(crontab, self).__init__(**kwargs)
+
+        def encode_beater(self):
+            return {
+                'minute': self.minute,
+                'hour': self.hour,
+                'day_of_week': self.day_of_week,
+                'day_of_month': self.day_of_month,
+                'month_of_year': self.month_of_year,
+            }
+
 Development
---------------
-RedisBeater is available on `GitHub <hhttps://github.com/saber-solooki/redisbeater>`_
+-----------
+RedisBeater is available on `GitHub <https://github.com/saber-solooki/redisbeater>`_
 
 Once you have the source you can run the tests with the following commands::
 
@@ -76,3 +118,4 @@ Once you have the source you can run the tests with the following commands::
 You can also quickly fire up a sample Beat instance with::
 
     celery beat --config exampleconf
+

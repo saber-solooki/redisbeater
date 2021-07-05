@@ -6,7 +6,7 @@ setup(
     name="celery-redisbeater",
     description="A Celery Beat Scheduler using Redis for persistent storage",
     long_description=long_description,
-    version="1.0.0",
+    version="1.0.1",
     url="https://github.com/saber-solooki/redisbeater",
     license="Apache License, Version 2.0",
     author="Saber Solooki",
@@ -29,4 +29,5 @@ setup(
     ],
     install_requires=['redis>=3.2', 'celery>=4.2', 'python-dateutil', 'tenacity'],
     tests_require=['pytest', 'fakeredis'],
+    long_description_content_type="text/x-rst"
 )
