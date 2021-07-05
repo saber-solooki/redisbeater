@@ -6,16 +6,16 @@ from celery.schedules import crontab, schedule
 from celery.utils.time import FixedOffset, timezone
 from dateutil import rrule as dateutil_rrule
 
-from redbeat.decoder import RedBeatJSONDecoder, RedBeatJSONEncoder
-from redbeat.schedules import rrule
+from redisbeater.decoder import RedisBeaterJSONDecoder, RedisBeaterJSONEncoder
+from redisbeater.schedules import rrule
 
 
 class JSONTestCase(TestCase):
     def dumps(self, d):
-        return json.dumps(d, cls=RedBeatJSONEncoder)
+        return json.dumps(d, cls=RedisBeaterJSONEncoder)
 
     def loads(self, d):
-        return json.loads(d, cls=RedBeatJSONDecoder)
+        return json.loads(d, cls=RedisBeaterJSONDecoder)
 
     def datetime_as_dict(self, **kwargs):
         d = {
@@ -90,7 +90,7 @@ class JSONTestCase(TestCase):
         return d
 
 
-class RedBeatJSONEncoderTestCase(JSONTestCase):
+class RedisBeaterJSONEncoderTestCase(JSONTestCase):
     def test_datetime_no_tz(self):
         dt = self.now()
         result = self.dumps(dt)
@@ -197,7 +197,7 @@ class RedBeatJSONEncoderTestCase(JSONTestCase):
         )
 
 
-class RedBeatJSONDecoderTestCase(JSONTestCase):
+class RedisBeaterJSONDecoderTestCase(JSONTestCase):
     def test_datetime_no_timezone(self):
         d = self.datetime_as_dict(__type__='datetime')
         result = self.loads(json.dumps(d))

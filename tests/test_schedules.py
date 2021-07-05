@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 from celery.utils.time import timezone
 
-from redbeat.schedules import rrule
+from redisbeater.schedules import rrule
 
 
 @patch.object(rrule, 'now', datetime.utcnow)

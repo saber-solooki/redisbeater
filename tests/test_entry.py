@@ -3,14 +3,14 @@ from datetime import datetime, timedelta
 
 from celery.utils.time import maybe_make_aware
 
-from redbeat import RedBeatSchedulerEntry
-from redbeat.decoder import RedBeatJSONDecoder, from_timestamp, to_timestamp
-from tests.basecase import RedBeatCase
+from redisbeater import RedisBeaterSchedulerEntry
+from redisbeater.decoder import RedisBeaterJSONDecoder, from_timestamp, to_timestamp
+from tests.basecase import RedisBeaterCase
 
 CELERY_CONFIG_DEFAULT_KWARGS = {}
 
 
-class test_RedBeatEntry(RedBeatCase):
+class test_RedisBeaterEntry(RedisBeaterCase):
     def test_basic_save(self):
         e = self.create_entry()
         e.save()
@@ -24,22 +24,22 @@ class test_RedBeatEntry(RedBeatCase):
             'options': {},
             'enabled': True,
         }
-        expected_key = self.app.redbeat_conf.key_prefix + 'test'
+        expected_key = self.app.redisbeater_conf.key_prefix + 'test'
 
-        redis = self.app.redbeat_redis
+        redis = self.app.redisbeater_redis
         value = redis.hget(expected_key, 'definition')
-        self.assertEqual(expected, json.loads(value, cls=RedBeatJSONDecoder))
-        self.assertEqual(redis.zrank(self.app.redbeat_conf.schedule_key, e.key), 0)
-        self.assertEqual(redis.zscore(self.app.redbeat_conf.schedule_key, e.key), e.score)
+        self.assertEqual(expected, json.loads(value, cls=RedisBeaterJSONDecoder))
+        self.assertEqual(redis.zrank(self.app.redisbeater_conf.schedule_key, e.key), 0)
+        self.assertEqual(redis.zscore(self.app.redisbeater_conf.schedule_key, e.key), e.score)
 
     def test_from_key_nonexistent_key(self):
         with self.assertRaises(KeyError):
-            RedBeatSchedulerEntry.from_key('doesntexist', self.app)
+            RedisBeaterSchedulerEntry.from_key('doesntexist', self.app)
 
     def test_from_key_missing_meta(self):
         initial = self.create_entry().save()
 
-        loaded = RedBeatSchedulerEntry.from_key(initial.key, self.app)
+        loaded = RedisBeaterSchedulerEntry.from_key(initial.key, self.app)
         self.assertEqual(initial.task, loaded.task)
         self.assertIsNotNone(loaded.last_run_at)
 
@@ -56,13 +56,13 @@ class test_RedBeatEntry(RedBeatCase):
         self.assertEqual(initial.total_run_count + 1, n.total_run_count)
 
         # updated meta was stored into redis
-        loaded = RedBeatSchedulerEntry.from_key(initial.key, app=self.app)
+        loaded = RedisBeaterSchedulerEntry.from_key(initial.key, app=self.app)
         self.assertEqual(loaded.last_run_at, now)
         self.assertEqual(loaded.total_run_count, initial.total_run_count + 1)
 
         # new entry updated the schedule
-        redis = self.app.redbeat_redis
-        self.assertEqual(redis.zscore(self.app.redbeat_conf.schedule_key, n.key), n.score)
+        redis = self.app.redisbeater_redis
+        self.assertEqual(redis.zscore(self.app.redisbeater_conf.schedule_key, n.key), n.score)
 
     def test_next_only_update_last_run_at(self):
         initial = self.create_entry()
@@ -75,13 +75,13 @@ class test_RedBeatEntry(RedBeatCase):
         initial = self.create_entry()
         initial.save()
 
-        e = RedBeatSchedulerEntry.from_key(initial.key, app=self.app)
+        e = RedisBeaterSchedulerEntry.from_key(initial.key, app=self.app)
         e.delete()
 
-        exists = self.app.redbeat_redis.exists(initial.key)
+        exists = self.app.redisbeater_redis.exists(initial.key)
         self.assertFalse(exists)
 
-        score = self.app.redbeat_redis.zrank(self.app.redbeat_conf.schedule_key, initial.key)
+        score = self.app.redisbeater_redis.zrank(self.app.redisbeater_conf.schedule_key, initial.key)
         self.assertIsNone(score)
 
     def test_due_at_never_run(self):

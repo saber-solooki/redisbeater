@@ -1,4 +1,4 @@
-name: RedBeat CI
+name: RedisBeater CI
 
 on: [push, pull_request]
 

@@ -3,16 +3,16 @@ from setuptools import setup
 long_description = open('README.rst').read()
 
 setup(
-    name="celery-redbeat",
+    name="celery-redisbeater",
     description="A Celery Beat Scheduler using Redis for persistent storage",
     long_description=long_description,
-    version="2.0.0",
-    url="https://github.com/sibson/redbeat",
+    version="1.0.0",
+    url="https://github.com/saber-solooki/redisbeater",
     license="Apache License, Version 2.0",
-    author="Marc Sibson",
-    author_email="sibson+redbeat@gmail.com",
+    author="Saber Solooki",
+    author_email="saber.solooki@gmail.com",
     keywords="python celery beat redis".split(),
-    packages=["redbeat"],
+    packages=["redisbeater"],
     classifiers=[
         'Development Status :: 5 - Production/Stable',
         'License :: OSI Approved :: Apache Software License',
@@ -28,5 +28,5 @@ setup(
         'Operating System :: OS Independent',
     ],
     install_requires=['redis>=3.2', 'celery>=4.2', 'python-dateutil', 'tenacity'],
-    tests_require=['pytest'],
+    tests_require=['pytest', 'fakeredis'],
 )

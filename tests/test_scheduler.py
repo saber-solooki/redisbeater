@@ -7,11 +7,22 @@ from unittest.mock import Mock, patch
 import pytz
 from celery.beat import DEFAULT_MAX_INTERVAL
 from celery.schedules import schedstate, schedule
-from celery.utils.time import maybe_timedelta
 
-from redbeat import RedBeatScheduler
-from redbeat.schedulers import get_redis
-from tests.basecase import AppCase, RedBeatCase
+from redisbeater import RedisBeaterScheduler
+from redisbeater.schedulers import get_redis
+from tests.basecase import AppCase, RedisBeaterCase
+
+
+class beatertimedelta(timedelta):
+    def encode_beater(self):
+        return {"days": self.days, "seconds": self.seconds}
+
+
+def maybe_timedelta(delta):
+    """Convert integer to timedelta, if argument is an integer."""
+    if isinstance(delta, int):
+        return beatertimedelta(seconds=delta)
+    return delta
 
 
 class mocked_schedule(schedule):
@@ -22,6 +33,9 @@ class mocked_schedule(schedule):
 
     def remaining_estimate(self, last_run_at):
         return self._remaining
+
+    def encode_beater(self):
+        return {"remaining": self._remaining}
 
 
 class mocked_expired_schedule(schedule):
@@ -41,10 +55,10 @@ due_now = mocked_schedule(0)
 due_next = mocked_schedule(1)
 
 
-class RedBeatSchedulerTestBase(RedBeatCase):
+class RedisBeaterSchedulerTestBase(RedisBeaterCase):
     def setUp(self):
         super().setUp()
-        self.s = RedBeatScheduler(app=self.app)
+        self.s = RedisBeaterScheduler(app=self.app)
         self.due_later = mocked_schedule(self.s.max_interval * 10)
         self.send_task = patch.object(self.s, 'send_task')
         self.send_task.start()
@@ -53,7 +67,7 @@ class RedBeatSchedulerTestBase(RedBeatCase):
         self.send_task.stop()
 
 
-class test_RedBeatScheduler_schedule(RedBeatSchedulerTestBase):
+class test_RedisBeaterScheduler_schedule(RedisBeaterSchedulerTestBase):
     def test_empty_schedule(self):
         self.assertEqual(self.s.schedule, {})
 
@@ -77,7 +91,7 @@ class test_RedBeatScheduler_schedule(RedBeatSchedulerTestBase):
         self.assertNotIn(later.name, schedule)
 
 
-class test_RedBeatScheduler_tick(RedBeatSchedulerTestBase):
+class test_RedisBeaterScheduler_tick(RedisBeaterSchedulerTestBase):
     def test_empty(self):
         with patch.object(self.s, 'send_task') as send_task:
             sleep = self.s.tick()
@@ -92,7 +106,7 @@ class test_RedBeatScheduler_tick(RedBeatSchedulerTestBase):
             sleep = self.s.tick()
             self.assertFalse(send_task.called)
 
-        self.assertLess(sleep, 1.0)
+        self.assertEqual(sleep, 1)
 
     def test_due_next_just_ran(self):
         e = self.create_entry(name='next', s=due_next)
@@ -102,7 +116,7 @@ class test_RedBeatScheduler_tick(RedBeatSchedulerTestBase):
             sleep = self.s.tick()
             self.assertFalse(send_task.called)
         self.assertLess(0.8, sleep)
-        self.assertLess(sleep, 1.0)
+        self.assertEqual(sleep, 1.0)
 
     @unittest.skip('test is breaking and unsure what the correct behaviour should be')
     def test_due_next_never_run_tz_positive(self):
@@ -158,25 +172,25 @@ class test_RedBeatScheduler_tick(RedBeatSchedulerTestBase):
         self.assertEqual(sleep, 1.0)
 
     def test_old_static_entries_are_removed(self):
-        redis = self.app.redbeat_redis
+        redis = self.app.redisbeater_redis
         schedule = {'test': {'task': 'test', 'schedule': mocked_schedule(42)}}
-        self.app.redbeat_conf.schedule = schedule
+        self.app.redisbeater_conf.schedule = schedule
         self.s.setup_schedule()
 
         self.assertIn('test', self.s.schedule)
-        self.assertIn('test', redis.smembers(self.app.redbeat_conf.statics_key))
+        self.assertIn('test', redis.smembers(self.app.redisbeater_conf.statics_key))
 
-        self.app.redbeat_conf.schedule = {}
+        self.app.redisbeater_conf.schedule = {}
         self.s.setup_schedule()
 
         self.assertNotIn('test', self.s.schedule)
-        self.assertNotIn('test', redis.smembers(self.app.redbeat_conf.statics_key))
+        self.assertNotIn('test', redis.smembers(self.app.redisbeater_conf.statics_key))
 
     def test_lock_timeout(self):
         self.assertEqual(self.s.lock_timeout, self.s.max_interval * 5)
 
 
-class NotSentinelRedBeatCase(AppCase):
+class NotSentinelRedisBeaterCase(AppCase):
 
     config_dict = {
         'BROKER_URL': 'redis://',
@@ -190,11 +204,11 @@ class NotSentinelRedBeatCase(AppCase):
         assert 'Sentinel' not in str(redis_client.connection_pool)
 
 
-class SentinelRedBeatCase(AppCase):
+class SentinelRedisBeaterCase(AppCase):
 
     config_dict = {
-        'REDBEAT_KEY_PREFIX': 'rb-tests:',
-        'redbeat_key_prefix': 'rb-tests:',
+        'REDISBEATER_KEY_PREFIX': 'rb-tests:',
+        'redisbeater_key_prefix': 'rb-tests:',
         'BROKER_URL': 'redis-sentinel://redis-sentinel:26379/0',
         'CELERY_RESULT_BACKEND': 'redis-sentinel://redis-sentinel:26379/1',
     }
@@ -215,8 +229,8 @@ class SentinelRedBeatCase(AppCase):
     def test_sentinel_scheduler_options(self):
         for options in [
             "BROKER_TRANSPORT_OPTIONS",
-            "redbeat_redis_options",
-            "REDBEAT_REDIS_OPTIONS",
+            "redisbeater_redis_options",
+            "REDISBEATER_REDIS_OPTIONS",
         ]:
             config = deepcopy(self.config_dict)
             config[options] = self.BROKER_TRANSPORT_OPTIONS
@@ -229,9 +243,9 @@ class SentinelRedBeatCase(AppCase):
 class SeparateOptionsForSchedulerCase(AppCase):
 
     config_dict = {
-        'REDBEAT_KEY_PREFIX': 'rb-tests:',
-        'REDBEAT_REDIS_URL': 'redis-sentinel://redis-sentinel:26379/0',
-        'REDBEAT_REDIS_OPTIONS': {
+        'REDISBEATER_KEY_PREFIX': 'rb-tests:',
+        'REDISBEATER_REDIS_URL': 'redis-sentinel://redis-sentinel:26379/0',
+        'REDISBEATER_REDIS_OPTIONS': {
             'sentinels': [('192.168.1.1', 26379), ('192.168.1.2', 26379), ('192.168.1.3', 26379)],
             'password': '123',
             'service_name': 'master',
@@ -251,15 +265,15 @@ class SeparateOptionsForSchedulerCase(AppCase):
 class SSLConnectionToRedis(AppCase):
 
     config_dict = {
-        'REDBEAT_KEY_PREFIX': 'rb-tests:',
-        'REDBEAT_REDIS_URL': 'rediss://redishost:26379/0',
-        'REDBEAT_REDIS_OPTIONS': {
+        'REDISBEATER_KEY_PREFIX': 'rb-tests:',
+        'REDISBEATER_REDIS_URL': 'rediss://redishost:26379/0',
+        'REDISBEATER_REDIS_OPTIONS': {
             'password': '123',
             'service_name': 'master',
             'socket_timeout': 0.1,
         },
         'CELERY_RESULT_BACKEND': 'redis-sentinel://redis-sentinel:26379/1',
-        'REDBEAT_REDIS_USE_SSL': {
+        'REDISBEATER_REDIS_USE_SSL': {
             'ssl_cert_reqs': ssl.CERT_REQUIRED,
             'ssl_keyfile': '/path/to/file.key',
             'ssl_certfile': '/path/to/cert.pem',
@@ -282,9 +296,9 @@ class SSLConnectionToRedis(AppCase):
 class SSLConnectionToRedisDefaultBrokerSSL(AppCase):
 
     config_dict = {
-        'REDBEAT_KEY_PREFIX': 'rb-tests:',
-        'REDBEAT_REDIS_URL': 'rediss://redishost:26379/0',
-        'REDBEAT_REDIS_OPTIONS': {
+        'REDISBEATER_KEY_PREFIX': 'rb-tests:',
+        'REDISBEATER_REDIS_URL': 'rediss://redishost:26379/0',
+        'REDISBEATER_REDIS_OPTIONS': {
             'password': '123',
             'service_name': 'master',
             'socket_timeout': 0.1,
@@ -313,15 +327,15 @@ class SSLConnectionToRedisDefaultBrokerSSL(AppCase):
 class SSLConnectionToRedisNoCerts(AppCase):
 
     config_dict = {
-        'REDBEAT_KEY_PREFIX': 'rb-tests:',
-        'REDBEAT_REDIS_URL': 'rediss://redishost:26379/0',
-        'REDBEAT_REDIS_OPTIONS': {
+        'REDISBEATER_KEY_PREFIX': 'rb-tests:',
+        'REDISBEATER_REDIS_URL': 'rediss://redishost:26379/0',
+        'REDISBEATER_REDIS_OPTIONS': {
             'password': '123',
             'service_name': 'master',
             'socket_timeout': 0.1,
         },
         'CELERY_RESULT_BACKEND': 'redis-sentinel://redis-sentinel:26379/1',
-        'REDBEAT_REDIS_USE_SSL': True,
+        'REDISBEATER_REDIS_USE_SSL': True,
     }
 
     def setup(self):  # celery3
@@ -336,31 +350,31 @@ class SSLConnectionToRedisNoCerts(AppCase):
         assert 'ssl_ca_certs' not in redis_client.connection_pool.connection_kwargs
 
 
-class RedBeatLockTimeoutDefaultValues(RedBeatCase):
+class RedisBeaterLockTimeoutDefaultValues(RedisBeaterCase):
     def test_no_values(self):
-        scheduler = RedBeatScheduler(app=self.app)
+        scheduler = RedisBeaterScheduler(app=self.app)
         assert DEFAULT_MAX_INTERVAL * 5 == scheduler.lock_timeout
         assert DEFAULT_MAX_INTERVAL == scheduler.max_interval
 
 
-class RedBeatLockTimeoutCustomMaxInterval(RedBeatCase):
+class RedisBeaterLockTimeoutCustomMaxInterval(RedisBeaterCase):
     config_dict = {
         'beat_max_loop_interval': 5,
     }
 
     def test_no_lock_timeout(self):
-        scheduler = RedBeatScheduler(app=self.app)
+        scheduler = RedisBeaterScheduler(app=self.app)
         assert self.config_dict['beat_max_loop_interval'] * 5 == scheduler.lock_timeout
         assert self.config_dict['beat_max_loop_interval'] == scheduler.max_interval
 
 
-class RedBeatLockTimeoutCustomAll(RedBeatCase):
+class RedisBeaterLockTimeoutCustomAll(RedisBeaterCase):
     config_dict = {
         'beat_max_loop_interval': 7,
-        'redbeat_lock_timeout': 13,
+        'redisbeater_lock_timeout': 13,
     }
 
     def test_custom_lock_timeout(self):
-        scheduler = RedBeatScheduler(app=self.app)
+        scheduler = RedisBeaterScheduler(app=self.app)
         assert self.config_dict['beat_max_loop_interval'] == scheduler.max_interval
-        assert self.config_dict['redbeat_lock_timeout'] == scheduler.lock_timeout
+        assert self.config_dict['redisbeater_lock_timeout'] == scheduler.lock_timeout

@@ -20,7 +20,7 @@ from kombu.utils.url import maybe_sanitize_url
 from redis.client import StrictRedis
 from tenacity import retry, retry_if_exception_type, stop_after_delay, wait_exponential
 
-from .decoder import RedBeatJSONDecoder, RedBeatJSONEncoder, to_timestamp
+from .decoder import RedisBeaterJSONDecoder, RedisBeaterJSONEncoder, to_timestamp
 
 logger = get_logger('celery.beat')
 
@@ -95,16 +95,16 @@ class RetryingConnection:
 
 def ensure_conf(app):
     """
-    Ensure for the given app the the redbeat_conf
-    attribute is set to an instance of the RedBeatConfig
+    Ensure for the given app the the redisbeater_conf
+    attribute is set to an instance of the RedisBeaterConfig
     class.
     """
-    name = 'redbeat_conf'
+    name = 'redisbeater_conf'
     app = app_or_default(app)
     try:
         config = getattr(app, name)
     except AttributeError:
-        config = RedBeatConfig(app)
+        config = RedisBeaterConfig(app)
         setattr(app, name, config)
 
     return config
@@ -113,8 +113,8 @@ def ensure_conf(app):
 def get_redis(app=None):
     app = app_or_default(app)
     conf = ensure_conf(app)
-    if not hasattr(app, 'redbeat_redis') or app.redbeat_redis is None:
-        redis_options = conf.redbeat_redis_options
+    if not hasattr(app, 'redisbeater_redis') or app.redisbeater_redis is None:
+        redis_options = conf.redisbeater_redis_options
         retry_period = redis_options.get('retry_period')
         if conf.redis_url.startswith('redis-sentinel') and 'sentinels' in redis_options:
             from redis.sentinel import Sentinel
@@ -143,11 +143,11 @@ def get_redis(app=None):
             connection = StrictRedis.from_url(conf.redis_url, decode_responses=True)
 
         if retry_period is None:
-            app.redbeat_redis = connection
+            app.redisbeater_redis = connection
         else:
-            app.redbeat_redis = RetryingConnection(retry_period, connection)
+            app.redisbeater_redis = RetryingConnection(retry_period, connection)
 
-    return app.redbeat_redis
+    return app.redisbeater_redis
 
 
 ADD_ENTRY_ERROR = """\
@@ -156,18 +156,18 @@ Couldn't add entry %r to redis schedule: %r. Contents: %r
 """
 
 
-class RedBeatConfig:
+class RedisBeaterConfig:
     def __init__(self, app=None):
         self.app = app_or_default(app)
-        self.key_prefix = self.either_or('redbeat_key_prefix', 'redbeat:')
+        self.key_prefix = self.either_or('redisbeater_key_prefix', 'redisbeater:')
         self.schedule_key = self.key_prefix + ':schedule'
         self.statics_key = self.key_prefix + ':statics'
-        self.lock_key = self.either_or('redbeat_lock_key', self.key_prefix + ':lock')
-        self.lock_timeout = self.either_or('redbeat_lock_timeout', None)
-        self.redis_url = self.either_or('redbeat_redis_url', app.conf['BROKER_URL'])
-        self.redis_use_ssl = self.either_or('redbeat_redis_use_ssl', app.conf['BROKER_USE_SSL'])
-        self.redbeat_redis_options = self.either_or(
-            'redbeat_redis_options', app.conf['BROKER_TRANSPORT_OPTIONS']
+        self.lock_key = self.either_or('redisbeater_lock_key', self.key_prefix + ':lock')
+        self.lock_timeout = self.either_or('redisbeater_lock_timeout', None)
+        self.redis_url = self.either_or('redisbeater_redis_url', app.conf['BROKER_URL'])
+        self.redis_use_ssl = self.either_or('redisbeater_redis_use_ssl', app.conf['BROKER_USE_SSL'])
+        self.redisbeater_redis_options = self.either_or(
+            'redisbeater_redis_options', app.conf['BROKER_TRANSPORT_OPTIONS']
         )
 
     @property
@@ -188,8 +188,10 @@ class RedBeatConfig:
         return self.app.conf.first(name, name.upper()) or default
 
 
-class RedBeatSchedulerEntry(ScheduleEntry):
+class RedisBeaterSchedulerEntry(ScheduleEntry):
     _meta = None
+    decoder = RedisBeaterJSONDecoder
+    encoder = RedisBeaterJSONEncoder
 
     def __init__(
         self, name=None, task=None, schedule=None, args=None, kwargs=None, enabled=True, **clsargs
@@ -200,32 +202,32 @@ class RedBeatSchedulerEntry(ScheduleEntry):
         self.enabled = enabled
         ensure_conf(self.app)
 
-    @staticmethod
-    def load_definition(key, app=None, definition=None):
+    @classmethod
+    def load_definition(cls, key, app=None, definition=None):
         if definition is None:
             definition = get_redis(app).hget(key, 'definition')
 
         if not definition:
             raise KeyError(key)
 
-        definition = RedBeatSchedulerEntry.decode_definition(definition)
+        definition = cls.decode_definition(definition)
 
         return definition
 
-    @staticmethod
-    def decode_definition(definition):
-        return json.loads(definition, cls=RedBeatJSONDecoder)
+    @classmethod
+    def decode_definition(cls, definition):
+        return json.loads(definition, cls=cls.decoder)
 
-    @staticmethod
-    def load_meta(key, app=None):
-        return RedBeatSchedulerEntry.decode_meta(get_redis(app).hget(key, 'meta'))
+    @classmethod
+    def load_meta(cls, key, app=None):
+        return cls.decode_meta(get_redis(app).hget(key, 'meta'))
 
-    @staticmethod
-    def decode_meta(meta, app=None):
+    @classmethod
+    def decode_meta(cls, meta, app=None):
         if not meta:
             return {'last_run_at': None}
 
-        return json.loads(meta, cls=RedBeatJSONDecoder)
+        return json.loads(meta, cls=cls.decoder)
 
     @classmethod
     def from_key(cls, key, app=None):
@@ -267,7 +269,7 @@ class RedBeatSchedulerEntry(ScheduleEntry):
 
     @property
     def key(self):
-        return self.app.redbeat_conf.key_prefix + self.name
+        return self.app.redisbeater_conf.key_prefix + self.name
 
     @property
     def score(self):
@@ -279,7 +281,7 @@ class RedBeatSchedulerEntry(ScheduleEntry):
 
     @property
     def rank(self):
-        return get_redis(self.app).zrank(self.app.redbeat_conf.schedule_key, self.key)
+        return get_redis(self.app).zrank(self.app.redisbeater_conf.schedule_key, self.key)
 
     def save(self):
         definition = {
@@ -295,16 +297,16 @@ class RedBeatSchedulerEntry(ScheduleEntry):
             'last_run_at': self.last_run_at,
         }
         with get_redis(self.app).pipeline() as pipe:
-            pipe.hset(self.key, 'definition', json.dumps(definition, cls=RedBeatJSONEncoder))
-            pipe.hsetnx(self.key, 'meta', json.dumps(meta, cls=RedBeatJSONEncoder))
-            pipe.zadd(self.app.redbeat_conf.schedule_key, {self.key: self.score})
+            pipe.hset(self.key, 'definition', json.dumps(definition, cls=self.encoder))
+            pipe.hsetnx(self.key, 'meta', json.dumps(meta, cls=self.encoder))
+            pipe.zadd(self.app.redisbeater_conf.schedule_key, {self.key: self.score})
             pipe.execute()
 
         return self
 
     def delete(self):
         with get_redis(self.app).pipeline() as pipe:
-            pipe.zrem(self.app.redbeat_conf.schedule_key, self.key)
+            pipe.zrem(self.app.redisbeater_conf.schedule_key, self.key)
             pipe.delete(self.key)
             pipe.execute()
 
@@ -321,8 +323,8 @@ class RedBeatSchedulerEntry(ScheduleEntry):
         }
 
         with get_redis(self.app).pipeline() as pipe:
-            pipe.hset(self.key, 'meta', json.dumps(meta, cls=RedBeatJSONEncoder))
-            pipe.zadd(self.app.redbeat_conf.schedule_key, {entry.key: entry.score})
+            pipe.hset(self.key, 'meta', json.dumps(meta, cls=self.encoder))
+            pipe.zadd(self.app.redisbeater_conf.schedule_key, {entry.key: entry.score})
             pipe.execute()
 
         return entry
@@ -335,8 +337,8 @@ class RedBeatSchedulerEntry(ScheduleEntry):
             'last_run_at': self.last_run_at,
         }
         with get_redis(self.app).pipeline() as pipe:
-            pipe.hset(self.key, 'meta', json.dumps(meta, cls=RedBeatJSONEncoder))
-            pipe.zadd(self.app.redbeat_conf.schedule_key, {self.key: self.score})
+            pipe.hset(self.key, 'meta', json.dumps(meta, cls=self.encoder))
+            pipe.zadd(self.app.redisbeater_conf.schedule_key, {self.key: self.score})
             pipe.execute()
 
     def is_due(self):
@@ -348,10 +350,10 @@ class RedBeatSchedulerEntry(ScheduleEntry):
         )
 
 
-class RedBeatScheduler(Scheduler):
+class RedisBeaterScheduler(Scheduler):
     # how often should we sync in schedule information
     # from the backend redis database
-    Entry = RedBeatSchedulerEntry
+    Entry = RedisBeaterSchedulerEntry
 
     lock = None
 
@@ -359,13 +361,13 @@ class RedBeatScheduler(Scheduler):
     lock_timeout = DEFAULT_MAX_INTERVAL * 5
 
     def __init__(self, app, lock_key=None, lock_timeout=None, **kwargs):
-        ensure_conf(app)  # set app.redbeat_conf
-        super(RedBeatScheduler, self).__init__(app, **kwargs)
+        ensure_conf(app)  # set app.redisbeater_conf
+        super(RedisBeaterScheduler, self).__init__(app, **kwargs)
 
-        self.lock_key = lock_key or app.redbeat_conf.lock_key
+        self.lock_key = lock_key or app.redisbeater_conf.lock_key
         self.lock_timeout = (
             lock_timeout
-            or app.redbeat_conf.lock_timeout
+            or app.redisbeater_conf.lock_timeout
             or self.max_interval * 5
             or self.lock_timeout
         )
@@ -373,24 +375,24 @@ class RedBeatScheduler(Scheduler):
     def setup_schedule(self):
         # cleanup old static schedule entries
         client = get_redis(self.app)
-        previous = {key for key in client.smembers(self.app.redbeat_conf.statics_key)}
-        removed = previous.difference(self.app.redbeat_conf.schedule.keys())
+        previous = {key for key in client.smembers(self.app.redisbeater_conf.statics_key)}
+        removed = previous.difference(self.app.redisbeater_conf.schedule.keys())
 
         for name in removed:
             logger.debug("beat: Removing old static schedule entry '%s'.", name)
             with client.pipeline() as pipe:
-                RedBeatSchedulerEntry(name, app=self.app).delete()
-                pipe.srem(self.app.redbeat_conf.statics_key, name)
+                RedisBeaterSchedulerEntry(name, app=self.app).delete()
+                pipe.srem(self.app.redisbeater_conf.statics_key, name)
                 pipe.execute()
 
         # setup static schedule entries
-        self.install_default_entries(self.app.redbeat_conf.schedule)
-        if self.app.redbeat_conf.schedule:
-            self.update_from_dict(self.app.redbeat_conf.schedule)
+        self.install_default_entries(self.app.redisbeater_conf.schedule)
+        if self.app.redisbeater_conf.schedule:
+            self.update_from_dict(self.app.redisbeater_conf.schedule)
 
             # keep track of static schedule entries,
             # so we notice when any are removed at next startup
-            client.sadd(self.app.redbeat_conf.statics_key, *self.app.redbeat_conf.schedule.keys())
+            client.sadd(self.app.redisbeater_conf.statics_key, *self.app.redisbeater_conf.schedule.keys())
 
     def update_from_dict(self, dict_):
         for name, entry in dict_.items():
@@ -415,11 +417,11 @@ class RedBeatScheduler(Scheduler):
         client = get_redis(self.app)
 
         with client.pipeline() as pipe:
-            pipe.zrangebyscore(self.app.redbeat_conf.schedule_key, 0, max_due_at)
+            pipe.zrangebyscore(self.app.redisbeater_conf.schedule_key, 0, max_due_at)
 
             # peek into the next tick to accuratly calculate sleep between ticks
             pipe.zrangebyscore(
-                self.app.redbeat_conf.schedule_key,
+                self.app.redisbeater_conf.schedule_key,
                 '({}'.format(max_due_at),
                 max_due_at + self.max_interval,
                 start=0,
@@ -434,7 +436,7 @@ class RedBeatScheduler(Scheduler):
                 entry = self.Entry.from_key(key, app=self.app)
             except KeyError:
                 logger.warning('beat: Failed to load %s, removing', key)
-                client.zrem(self.app.redbeat_conf.schedule_key, key)
+                client.zrem(self.app.redisbeater_conf.schedule_key, key)
                 continue
 
             d[entry.name] = entry
@@ -479,7 +481,7 @@ class RedBeatScheduler(Scheduler):
 
     @property
     def info(self):
-        info = ['       . redis -> {}'.format(maybe_sanitize_url(self.app.redbeat_conf.redis_url))]
+        info = ['       . redis -> {}'.format(maybe_sanitize_url(self.app.redisbeater_conf.redis_url))]
         if self.lock_key:
             info.append(
                 '       . lock -> `{}` {} ({}s)'.format(

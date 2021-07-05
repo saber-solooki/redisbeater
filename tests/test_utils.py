@@ -1,10 +1,10 @@
 from celery.utils.time import maybe_make_aware
 
-from redbeat.decoder import from_timestamp, to_timestamp
-from tests.basecase import RedBeatCase
+from redisbeater.decoder import from_timestamp, to_timestamp
+from tests.basecase import RedisBeaterCase
 
 
-class Test_utils(RedBeatCase):
+class Test_utils(RedisBeaterCase):
     def test_roundtrip(self):
         now = self.app.now()
         # 3.x returns naive, but 4.x returns aware

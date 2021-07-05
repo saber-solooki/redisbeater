@@ -13,4 +13,4 @@ Release
 
  - create release in GitHub
 
-    open https://github.com/sibson/redbeat/tags
+    open https://github.com/saber-solooki/redisbeater/tags

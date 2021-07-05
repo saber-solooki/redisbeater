@@ -1,12 +1,12 @@
-RedBeat
+RedisBeater
 =======
 
-.. image:: https://img.shields.io/pypi/v/celery-redbeat.svg
-   :target: https://pypi.python.org/pypi/celery-redbeat
+.. image:: https://img.shields.io/pypi/v/celery-redisbeater.svg
+   :target: https://pypi.python.org/pypi/celery-redisbeater
    :alt: PyPI
 
-.. image:: https://github.com/sibson/redbeat/workflows/RedBeat%20CI/badge.svg
-   :target: https://github.com/sibson/redbeat/actions
+.. image:: https://github.com/saber-solooki/redisbeater/workflows/RedisBeater%20CI/badge.svg
+   :target: https://github.com/saber-solooki/redisbeater/actions
    :alt: Actions Status
 
 .. image:: https://readthedocs.org/projects/redbeat/badge/?version=latest&style=flat
@@ -17,11 +17,12 @@ RedBeat
    :target: https://github.com/psf/black
    :alt: Code style: black
 
-`RedBeat <https://github.com/sibson/redbeat>`_ is a
+`RedisBeater <https://github.com/saber-solooki/redisbeater>`_ is a
 `Celery Beat Scheduler <http://celery.readthedocs.org/en/latest/userguide/periodic-tasks.html>`_
-that stores the scheduled tasks and runtime metadata in `Redis <http://redis.io/>`_.
+that stores the scheduled tasks and runtime metadata in `Redis <http://redis.io/>`_. It is a
+fork of `RedBeat <https://github.com/sibson/redbeat>`_
 
-Why RedBeat?
+Why RedisBeater?
 -------------
 
 #. Dynamic live task creation and modification, without lengthy downtime
@@ -29,8 +30,9 @@ Why RedBeat?
 #. Shared data store; Beat isn't tied to a single drive or machine
 #. Fast startup even with a large task count
 #. Prevent accidentally running multiple Beat servers
+#. Work with any schedule class which provide required interface
 
-For more background on the genesis of RedBeat see this `blog post <https://blog.heroku.com/redbeat-celery-beat-scheduler>`_
+For more background on the genesis of RedisBeater see this `blog post <https://blog.heroku.com/redbeat-celery-beat-scheduler>`_
 
 Getting Started
 ---------------
@@ -39,32 +41,32 @@ Install with pip:
 
 .. code-block:: console
 
-    pip install celery-redbeat
+    pip install celery-redisbeater
 
-Configure RedBeat settings in your Celery configuration file:
+Configure RedisBeater settings in your Celery configuration file:
 
 .. code-block:: python
 
-    redbeat_redis_url = "redis://localhost:6379/1"
+    redisbeater_redis_url = "redis://localhost:6379/1"
 
 Then specify the scheduler when running Celery Beat:
 
 .. code-block:: console
 
-    celery beat -S redbeat.RedBeatScheduler
+    celery beat -S redisbeater.RedisBeaterScheduler
 
-RedBeat uses a distributed lock to prevent multiple instances running.
+RedisBeater uses a distributed lock to prevent multiple instances running.
 To disable this feature, set:
 
 .. code-block:: python
 
-    redbeat_lock_key = None
+    redisbeater_lock_key = None
 
 More details available on `Read the Docs <https://redbeat.readthedocs.io/en/latest/>`_
 
 Development
 --------------
-RedBeat is available on `GitHub <https://github.com/sibson/redbeat>`_
+RedisBeater is available on `GitHub <hhttps://github.com/saber-solooki/redisbeater>`_
 
 Once you have the source you can run the tests with the following commands::
 

@@ -1,7 +1,7 @@
 
 Design
 ------
-At its core RedBeat uses a Sorted Set to store the schedule as a priority queue.
+At its core RedisBeater uses a Sorted Set to store the schedule as a priority queue.
 Additionally, task details are stored within a hash key mapping to the task definition and metadata.
 
 The sortted schedule set contains task keys sorted by the next scheduled run time, as time since epoch.
@@ -17,10 +17,10 @@ For each tick of Beat
 
 Scheduling
 ~~~~~~~~~~~~
-Assuming your `redbeat_key_prefix` config values is set to `'redbeat:'`
+Assuming your `redisbeater_key_prefix` config values is set to `'redisbeater:'`
 (default) you will also need to insert the new task into the schedule with::
 
-    zadd redbeat::schedule 0 new-task-name
+    zadd redisbeater::schedule 0 new-task-name
 
 The score is the next time the task should run formatted as a UNIX timestamp.
 
@@ -47,9 +47,9 @@ the actual run time, allowing intervals to be relative to last execution rather 
 
 High Availability
 ~~~~~~~~~~~~~~~~~
-Redbeat use a lock in redis to prevent multiple node running.
+Redisbeater use a lock in redis to prevent multiple node running.
 You can safely start multiple nodes as backup, when the running node fails or
-experience network problems, after ``redbeat_lock_timeout`` seconds,
+experience network problems, after ``redisbeater_lock_timeout`` seconds,
 another node will acquire the lock and start running.
 
 When the previous node back online, it will notice that itself no longer holds
@@ -61,7 +61,7 @@ Timezone
 ~~~~~~~~~~~
 To support non-UTC timezones it's useful to be able to reason about which values are localized and which are always UTC.
 
-Regardless, of what timezone is used, the ```redbeat_key_prefix:schedule``` sorted set is sorted by the UNIX timestamp, of time since the UNIX epoch in UTC.
+Regardless, of what timezone is used, the ```redisbeater_key_prefix:schedule``` sorted set is sorted by the UNIX timestamp, of time since the UNIX epoch in UTC.
 
 Every task schedule maybe created with a timezone independent of the host timezone.
 As a result most datetime objects need to be timezone aware.

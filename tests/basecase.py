@@ -4,7 +4,7 @@ from celery.contrib.testing.app import TestApp
 from celery.schedules import schedule
 from fakeredis import FakeStrictRedis
 
-from redbeat.schedulers import RedBeatSchedulerEntry
+from redisbeater.schedulers import RedisBeaterSchedulerEntry
 
 
 class AppCase(TestCase):
@@ -16,13 +16,13 @@ class AppCase(TestCase):
         self.setup()
 
 
-class RedBeatCase(AppCase):
+class RedisBeaterCase(AppCase):
     def setup(self):
         self.app.conf.add_defaults(
-            {'REDBEAT_KEY_PREFIX': 'rb-tests:', 'redbeat_key_prefix': 'rb-tests:'}
+            {'REDISBEATER_KEY_PREFIX': 'rb-tests:', 'redisbeater_key_prefix': 'rb-tests:'}
         )
-        self.app.redbeat_redis = FakeStrictRedis(decode_responses=True)
-        self.app.redbeat_redis.flushdb()
+        self.app.redisbeater_redis = FakeStrictRedis(decode_responses=True)
+        self.app.redisbeater_redis.flushdb()
 
     def create_entry(self, name=None, task=None, s=None, run_every=60, **kwargs):
 
@@ -35,6 +35,6 @@ class RedBeatCase(AppCase):
         if s is None:
             s = schedule(run_every=run_every)
 
-        e = RedBeatSchedulerEntry(name, task, s, app=self.app, **kwargs)
+        e = RedisBeaterSchedulerEntry(name, task, s, app=self.app, **kwargs)
 
         return e

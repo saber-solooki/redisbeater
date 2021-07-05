@@ -14,14 +14,14 @@ directly into Redis. The config options is called `beat_schedule`_, e.g.:
         },
     }
 
-The easiest way to insert tasks from Python is it use ``RedBeatSchedulerEntry()``::
+The easiest way to insert tasks from Python is it use ``RedisBeaterSchedulerEntry()``::
 
     interval = celery.schedules.schedule(run_every=60)  # seconds
-    entry = RedBeatSchedulerEntry('task-name', 'tasks.some_task', interval, args=['arg1', 2])
+    entry = RedisBeaterSchedulerEntry('task-name', 'tasks.some_task', interval, args=['arg1', 2])
     entry.save()
 
 Alternatively, you can insert directly into Redis by creating a new hash with
-a key of ``<redbeat_key_prefix>:task-name``. It should contain a single key
+a key of ``<redisbeater_key_prefix>:task-name``. It should contain a single key
 ``definition`` which is a JSON blob with the task details.
 
 .. _`CELERYBEAT_SCHEDULE`: http://docs.celeryproject.org/en/3.1/userguide/periodic-tasks.html#beat-entries

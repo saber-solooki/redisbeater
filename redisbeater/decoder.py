@@ -3,10 +3,15 @@ import json
 from datetime import datetime
 
 from celery.schedules import crontab, schedule
+from celery.utils.log import get_logger
 from celery.utils.time import FixedOffset, timezone
 from dateutil.rrule import weekday
 
+from . import utils
 from .schedules import rrule
+
+
+logger = get_logger('celery.beat')
 
 
 def to_timestamp(dt):
@@ -28,7 +33,7 @@ def from_timestamp(seconds, tz_minutes=0):
     return datetime.fromtimestamp(seconds, tz=tz)
 
 
-class RedBeatJSONDecoder(json.JSONDecoder):
+class RedisBeaterJSONDecoder(json.JSONDecoder):
     def __init__(self, *args, **kargs):
         super().__init__(object_hook=self.dict_to_object, *args, **kargs)
 
@@ -37,6 +42,11 @@ class RedBeatJSONDecoder(json.JSONDecoder):
             return d
 
         objtype = d.pop('__type__')
+        if d.get('import_path'):
+            import_path = d.pop('import_path')
+            schedule_cls = utils.import_string(import_path)
+        else:
+            schedule_cls = None
 
         if objtype == 'datetime':
             zone = d.pop('timezone', 'UTC')
@@ -64,14 +74,23 @@ class RedBeatJSONDecoder(json.JSONDecoder):
                     d[key] = from_timestamp(timestamp, tz_minutes)
             return rrule(**d)
 
+        if schedule_cls:
+            if hasattr(schedule_cls, 'beater_initializer_attr'):
+                return schedule_cls(**schedule_cls.beater_initializer_attr(d))
+            else:
+                return schedule_cls(**d)
+        else:
+            logger.warning("Something goes wrong. "
+                           "Custom schedule detected but cannot import class.")
+
         d['__type__'] = objtype
 
         return d
 
 
-class RedBeatJSONEncoder(json.JSONEncoder):
+class RedisBeaterJSONEncoder(json.JSONEncoder):
     def default(self, obj):
-        if isinstance(obj, datetime):
+        if type(obj) == datetime:
             if obj.tzinfo is None:
                 timezone = 'UTC'
             elif obj.tzinfo.zone is None:
@@ -91,7 +110,7 @@ class RedBeatJSONEncoder(json.JSONEncoder):
                 'timezone': timezone,
             }
 
-        if isinstance(obj, crontab):
+        if type(obj) == crontab:
             return {
                 '__type__': 'crontab',
                 'minute': obj._orig_minute,
@@ -101,7 +120,7 @@ class RedBeatJSONEncoder(json.JSONEncoder):
                 'month_of_year': obj._orig_month_of_year,
             }
 
-        if isinstance(obj, rrule):
+        if type(obj) == rrule:
             res = {
                 '__type__': 'rrule',
                 'freq': obj.freq,
@@ -131,14 +150,23 @@ class RedBeatJSONEncoder(json.JSONEncoder):
 
             return res
 
-        if isinstance(obj, weekday):
+        if type(obj) == weekday:
             return {'__type__': 'weekday', 'wkday': obj.weekday}
 
-        if isinstance(obj, schedule):
+        if type(obj) == schedule:
             return {
                 '__type__': 'interval',
                 'every': obj.run_every.total_seconds(),
                 'relative': bool(obj.relative),
             }
 
-        return super().default(obj)
+        if hasattr(obj, "encode_beater"):
+            return {
+                '__type__': obj.__class__.__name__,
+                'import_path': utils.get_fqcn(obj.__class__),
+                **obj.encode_beater()
+            }
+
+        raise TypeError(f'Object of type {obj.__class__.__name__} '
+                        f'is not compatible to be used in RedisBeater. '
+                        f'Override encode_beater method for compatibility.')
